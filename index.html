@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Blink Detector 👁️</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(to right, #c9d6ff, #e2e2e2);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .container {
+      text-align: center;
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+
+    video, canvas {
+      border: 1px solid #ccc;
+      margin-bottom: 10px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #6a11cb;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #2575fc;
+    }
+
+    #blinkCount {
+      font-size: 1.5em;
+      margin: 15px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Blink Detector 👁️</h1>
+    <video id="video" width="640" height="480" autoplay muted></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+    <div id="blinkCount">Blinks: 0</div>
+    <button onclick="sendBlinkData()">Send Blink Count</button>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script>
+    let blinkCount = 0;
+    let lastBlinkTime = 0;
+
+    const videoElement = document.getElementById('video');
+    const canvasElement = document.getElementById('canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+
+    const faceMesh = new FaceMesh({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
+
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    faceMesh.onResults(results => {
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+      if (results.multiFaceLandmarks.length > 0) {
+        const landmarks = results.multiFaceLandmarks[0];
+
+        const leftEye = landmarks[159].y - landmarks[145].y;
+        const rightEye = landmarks[386].y - landmarks[374].y;
+        const avgEye = (leftEye + rightEye) / 2;
+
+        if (avgEye < 0.01 && Date.now() - lastBlinkTime > 500) {
+          blinkCount++;
+          lastBlinkTime = Date.now();
+          document.getElementById('blinkCount').innerText = `Blinks: ${blinkCount}`;
+        }
+      }
+    });
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await faceMesh.send({ image: videoElement });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+
+    function sendBlinkData() {
+      fetch("http://localhost:5000/blink", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ count: blinkCount })
+      })
+      .then(response => response.json())
+      .then(data => {
+        alert("Blink count sent to server: " + data.status);
+      })
+      .catch(error => {
+        console.error("Error sending blink data:", error);
+      });
+    }
+  </script>
+</body>
+</html>
